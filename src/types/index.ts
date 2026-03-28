@@ -3,6 +3,9 @@ export enum StepType {
   THINKING = 'THINKING',
   CALLING = 'CALLING',
   VALIDATING = 'VALIDATING',
+  RETRIEVING = 'RETRIEVING',
+  SEARCHING = 'SEARCHING',
+  RESPONDING = 'RESPONDING',
 }
 
 // Step status from SSE stream

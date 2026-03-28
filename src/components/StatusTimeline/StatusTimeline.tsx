@@ -35,6 +35,7 @@ export default function StatusTimeline() {
           ) : (
             steps.map((step, index) => {
               const config = stepConfig[step.stepType]
+              if (!config) return null
               const Icon = config.icon
               const isLast = index === steps.length - 1
 

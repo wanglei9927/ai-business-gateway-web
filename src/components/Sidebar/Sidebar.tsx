@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { useDispatch } from 'react-redux'
-import { MessageSquare, Plus, Clock, ChevronRight } from 'lucide-react'
-import { createSession, selectSession } from '../../store/chatSlice'
+import { useDispatch, useSelector } from 'react-redux'
+import { MessageSquare, Plus, Clock, ChevronRight, Trash2 } from 'lucide-react'
+import { createSession, selectSession, clearMessages } from '../../store/chatSlice'
+import type { RootState } from '../../store/store'
 import type { Session } from '../../types'
 
 export default function Sidebar() {
-  const [sessions] = useState<Session[]>([])
   const dispatch = useDispatch()
+  const { sessions } = useSelector((state: RootState) => state.chat)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
 
   const handleNewChat = () => {
     const newSession: Session = {
@@ -66,7 +68,34 @@ export default function Sidebar() {
       </div>
 
       {/* Footer */}
-      <div className="p-4 border-t border-slate-700">
+      <div className="p-4 border-t border-slate-700 space-y-2">
+        {showClearConfirm ? (
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                dispatch(clearMessages())
+                setShowClearConfirm(false)
+              }}
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 text-sm"
+            >
+              确认清空
+            </button>
+            <button
+              onClick={() => setShowClearConfirm(false)}
+              className="flex-1 bg-slate-700 hover:bg-slate-600 text-white rounded-lg py-2 text-sm"
+            >
+              取消
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowClearConfirm(true)}
+            className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-slate-300 rounded-lg py-2 text-sm transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>清空历史对话</span>
+          </button>
+        )}
         <div className="text-xs text-slate-500 text-center">
           AI Business Gateway
         </div>
