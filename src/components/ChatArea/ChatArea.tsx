@@ -1,10 +1,11 @@
-import { useSelector } from 'react-redux'
+import { useSelector, useDispatch } from 'react-redux'
 import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Send, Loader2 } from 'lucide-react'
 import type { RootState } from '../../store/store'
+import { store } from '../../store/store'
 import { parseSSEConnection } from '../../services/sseService'
-import { useDispatch } from 'react-redux'
 import { addMessage } from '../../store/chatSlice'
 import { startStreaming, addStep, stopStreaming } from '../../store/stepSlice'
 import { StepType } from '../../types'
@@ -13,10 +14,12 @@ import type { ChatMessage } from '../../types'
 export default function ChatArea() {
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [aiContent, setAiContent] = useState('')
+  // Use ref to track latest aiContent for closure
+  const aiContentRef = useRef('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const dispatch = useDispatch()
   const { messages } = useSelector((state: RootState) => state.chat)
-  const steps = useSelector((state: RootState) => state.step.steps)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -25,6 +28,12 @@ export default function ChatArea() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  useEffect(() => {
+    if (isStreaming && aiContent) {
+      scrollToBottom()
+    }
+  }, [aiContent, isStreaming])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -39,6 +48,8 @@ export default function ChatArea() {
     dispatch(addMessage(userMessage))
     setInput('')
     setIsStreaming(true)
+    setAiContent('') // Reset AI content
+    aiContentRef.current = '' // Reset AI content ref
     dispatch(startStreaming())
 
     // Add user message to steps
@@ -52,26 +63,59 @@ export default function ChatArea() {
       await parseSSEConnection(
         input,
         (step) => {
-          dispatch(addStep(step))
+          try {
+            dispatch(addStep(step))
+          } catch (e) {
+            console.error('Error adding step:', e)
+          }
+        },
+        (content) => {
+          // Accumulate AI content from RESPONDING steps
+          const newContent = aiContentRef.current + content
+          aiContentRef.current = newContent
+          setAiContent(newContent)
         },
         (error) => {
           console.error('SSE Error:', error)
-          setIsStreaming(false)
-          dispatch(stopStreaming())
+          try {
+            setIsStreaming(false)
+            dispatch(stopStreaming())
+          } catch (e) {
+            console.error('Error in error callback:', e)
+          }
         },
         () => {
-          setIsStreaming(false)
-          dispatch(stopStreaming())
+          try {
+            setIsStreaming(false)
+            dispatch(stopStreaming())
 
-          // Add assistant response message
-          const assistantMessage: ChatMessage = {
-            id: (Date.now() + 1).toString(),
-            role: 'assistant',
-            content: '处理完成',
-            timestamp: Date.now(),
-            steps: [...steps],
+            // Use store.getState() to get the latest steps, not the closure value
+            // Use aiContentRef to get the latest AI content
+            const latestSteps = store.getState().step.steps
+            const hasRespondingSteps = latestSteps.some(step => step.stepType === 'RESPONDING')
+
+            // Determine final content - only show error if there were no RESPONDING steps at all
+            let finalContent: string
+            if (aiContentRef.current) {
+              finalContent = aiContentRef.current
+            } else if (!hasRespondingSteps) {
+              finalContent = '未收到后端响应，请检查后端服务是否正常运行'
+            } else {
+              finalContent = '未收到有效响应内容'
+            }
+
+            // Add assistant response message
+            const assistantMessage: ChatMessage = {
+              id: (Date.now() + 1).toString(),
+              role: 'assistant',
+              content: finalContent,
+              timestamp: Date.now(),
+              steps: latestSteps,
+            }
+            dispatch(addMessage(assistantMessage))
+          } catch (e) {
+            console.error('Error in complete callback:', e)
           }
-          dispatch(addMessage(assistantMessage))
         }
       )
     } catch (error) {
@@ -109,7 +153,7 @@ export default function ChatArea() {
             >
               {message.role === 'assistant' ? (
                 <div className="prose prose-invert prose-sm max-w-none">
-                  <ReactMarkdown>{message.content}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content || ''}</ReactMarkdown>
                 </div>
               ) : (
                 <p className="whitespace-pre-wrap">{message.content}</p>
@@ -118,12 +162,15 @@ export default function ChatArea() {
           </div>
         ))}
 
-        {isStreaming && steps.length > 0 && (
+        {isStreaming && aiContent && (
           <div className="flex justify-start">
             <div className="bg-slate-700 rounded-2xl px-4 py-3 max-w-[70%]">
-              <div className="flex items-center gap-2 text-slate-400">
+              <div className="prose prose-invert prose-sm max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{aiContent || ''}</ReactMarkdown>
+              </div>
+              <div className="flex items-center gap-2 text-slate-400 mt-2">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-sm">AI 正在处理...</span>
+                <span className="text-sm">AI 正在生成回答...</span>
               </div>
             </div>
           </div>
